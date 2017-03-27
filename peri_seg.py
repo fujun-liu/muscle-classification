@@ -11,7 +11,7 @@ import caffe
 class FCNSegNet():
 	
 	def __init__(self, net_paras, gpu_id=-1):
-		# build network
+	    # build network
 		self.net_paras = net_paras
 		# load model and set gpu
 		if gpu_id != -1:
@@ -23,8 +23,8 @@ class FCNSegNet():
 		self.net = caffe.Net(net_paras['deployproto_path'], net_paras['modelfile_path'], caffe.TEST)
 
 	def forward_patch(self, im, resize_ratio):
-		'''
-			do forward computation here
+	    '''
+		    do forward computation here
 		'''
 		des_h = int(np.round(im.shape[0]*resize_ratio))
 		des_w = int(np.round(im.shape[1]*resize_ratio))  
@@ -48,7 +48,7 @@ class FCNSegNet():
 
 	def forward_batch(self, im, part=500, batch_sz=8, resize_ratio=1.0):
         '''
-        no overlap used
+            no overlap used
         '''
         # size divisible by part size
         nH = int(np.round(1.0*im.shape[0]*resize_ratio/part))
