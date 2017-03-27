@@ -93,14 +93,28 @@ class FCNSegNet():
         
 		return seg_map
 
+def load_net():
+    net_paras = {
+    'deployproto_path': 'models/deploy_hed.prototxt',
+    'modelfile_path': 'models/perim-seg-hed_iter_80000.caffemodel',
+    'model_mean': (0.3084, 0.5664, 0.6756),
+    'use_self_mean': False,
+    'use_color': True
+    }
+    gpu_id = 1
+    return FCNSegNet(net_paras, gpu_id=gpu_id)
+
 if __name__ == "__main__":
-	from openslide import OpenSlide
+    from openslide import OpenSlide
     import glob
     import os
     import time
+    # load net
+    fcn_net = load_net()
+
     # network parameters
-    wsi_dir = ''
-    des_dir = ''
+    wsi_dir = '/data/fujun/data/muscle-whole-slides/'
+    des_dir = '/data/fujun/data/muscle-peri-seg-result'
     wsi_suffix = ('.ndpi', '.tiff', '.svs')
     wsi_lst = []
     wsi_name_lst = []
@@ -114,7 +128,7 @@ if __name__ == "__main__":
     read_size = 5000
     # save size
     save_size = 5000
-    for wsi_path, wsi_name in zip(wsi_lst, wsi_name_lst):
+    for wsi_path, wsi_name in zip(wsi_lst, wsi_name_lst)[:1]:
         # open slide 
         osi = OpenSlide(wsi_path)
         W, H = osi.dimensions
