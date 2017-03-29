@@ -3,7 +3,8 @@ import cv2
 import sys
 # Make sure that caffe is on the python path:
 # this file is expected to be in {caffe_root}/examples/hed/
-caffe_root = '/home/fujun/work/hed/'
+# this is traind by zizhao
+caffe_root = '/home/fujun/work/caffe-muscle/'
 sys.path.insert(0, caffe_root + 'python')
 #import _init_paths
 import caffe
@@ -50,6 +51,9 @@ class FCNSegNet():
         '''
             no overlap used
         '''
+        result_layer_name = self.net_paras['result_layer_name']
+        if self.net_paras['normalize']: 
+            im /= 255.0
         # size divisible by part size
         nH = int(np.round(1.0*im.shape[0]*resize_ratio/part))
         nW = int(np.round(1.0*im.shape[1]*resize_ratio/part))
@@ -87,7 +91,7 @@ class FCNSegNet():
             self.net.blobs['data'].reshape(this_size, nchannels, part, part)
             self.net.blobs['data'].data[...] = patch_all[r*batch_sz:r*batch_sz+this_size]
             self.net.forward()
-            batch_score = self.net.blobs['sigmoid-fuse'].data
+            batch_score = self.net.blobs[result_layer_name].data
             print batch_score.shape
             for i in range(this_size):
                 ih, iw = start_pos[i+r*batch_sz]
@@ -97,9 +101,11 @@ class FCNSegNet():
 
 def load_net():
     net_paras = {
-    'deployproto_path': 'models/deploy_hed.prototxt',
-    'modelfile_path': 'models/perim-seg-hed_iter_80000.caffemodel',
-    'model_mean': (0.3084, 0.5664, 0.6756),
+    'deployproto_path': '../models/deploy_fiber_seg_he.prototxt',
+    'modelfile_path': '../models/fiber_seg_he.caffemodel',
+    'model_mean': (151.150621644, 88.8360644307,177.680687791),
+    'result_layer_name': 'sigmoid-fuse-seg',
+    'normalize': False, 
     'use_self_mean': False,
     'use_color': True
     }
@@ -116,7 +122,8 @@ if __name__ == "__main__":
 
     # network parameters
     wsi_dir = '/data/fujun/data/muscle-whole-slides/'
-    des_dir = '/data/fujun/data/muscle-peri-seg-result'
+    des_dir = '/data/fujun/data/muscle-fiber-seg-result'
+    result_suffix = 'fiber'
     wsi_suffix = ('.ndpi', '.tiff', '.svs')
     wsi_lst = []
     wsi_name_lst = []
@@ -134,7 +141,7 @@ if __name__ == "__main__":
     res_level_ref = 1
     # for debug, save patch result
     save_patch = False
-    for wsi_path, wsi_name in zip(wsi_lst, wsi_name_lst)[-30:]:
+    for wsi_path, wsi_name in zip(wsi_lst, wsi_name_lst):
         # open slide 
         osi = OpenSlide(wsi_path)
         res_level = min(res_level_ref, len(osi.level_dimensions)-1)
@@ -170,7 +177,7 @@ if __name__ == "__main__":
                 w1, w2 = pos_W[j,0], np.sum(pos_W[j])
                 t1 = time.time()
                 region = np.asarray(osi.read_region((int(j*read_size*down_ratio), int(i*read_size*down_ratio)), res_level, (this_W, this_H)))[:,:,:3]
-                seg_part = fcn_net.forward_batch(region/255.0)
+                seg_part = fcn_net.forward_batch(region)
                 print 'It took {} seconds to process image with size {}x{}'.format(time.time()-t1, this_H, this_W)
                 
                 t1 = time.time()
@@ -181,14 +188,14 @@ if __name__ == "__main__":
                 if save_patch:
                     tmp_path = os.path.join(des_dir, wsi_name + '_patch_{}_{}.png'.format(i, j))
                     cv2.imwrite(tmp_path, img_merge[h1:h2, w1:w2,:].astype(np.uint8))
-                    tmp_path = os.path.join(des_dir, wsi_name + '_patch_{}_{}_peri_seg.png'.format(i, j))
+                    tmp_path = os.path.join(des_dir, wsi_name + '_patch_{}_{}_{}_seg.png'.format(i, j, result_suffix))
                     cv2.imwrite(tmp_path, (255*seg_map_merge[h1:h2, w1:w2]).astype(np.uint8))
         
         # save results, save both image and map
         t1 = time.time()
         tmp_path = os.path.join(des_dir, wsi_name + '.png')
         cv2.imwrite(tmp_path, img_merge.astype(np.uint8))
-        tmp_path = os.path.join(des_dir, wsi_name + '_peri_seg.png')
+        tmp_path = os.path.join(des_dir, wsi_name + '_{}_seg.png'.format(result_suffix))
         cv2.imwrite(tmp_path, (255*seg_map_merge).astype(np.uint8))
         
 
