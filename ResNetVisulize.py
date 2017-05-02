@@ -34,49 +34,41 @@ data_transforms = {
 class ResNetVisulize():
     def __init__(self):
         pass
-
-    def _resnet_feat_extractor(self):
-        return (nn.Sequential(
-            self.model_ft.conv1,
-            self.model_ft.bn1,
-            self.model_ft.relu,
-            self.model_ft.maxpool,
-            self.model_ft.layer1,
-            self.model_ft.layer2,
-            self.model_ft.layer3,
-            self.model_ft.layer4,
-            self.model_ft.avgpool,
-        ),)
     
     def resnet_forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
+        x = self.model_ft.conv1(x)
+        x = self.model_ft.bn1(x)
+        x = self.model_ft.relu(x)
+        x = self.model_ft.maxpool(x)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        conv_feat = self.layer4(x)
+        x = self.model_ft.layer1(x)
+        x = self.model_ft.layer2(x)
+        x = self.model_ft.layer3(x)
+        conv_feat = self.model_ft.layer4(x)
 
-        x = self.avgpool(conv_feat)
+        x = self.model_ft.avgpool(conv_feat)
+        x = x.view(x.size(0), -1)
+        x = self.model_ft.fc(x)
+        return x.data.numpy(), conv_feat.data.numpy()
+    
+    def resnetup_forward(self, x):
+        x = self.model_ft.conv1(x)
+        x = self.model_ft.bn1(x)
+        x = self.model_ft.relu(x)
+        x = self.model_ft.maxpool(x)
+
+        x = self.model_ft.layer1(x)
+        x = self.model_ft.layer2(x)
+        x = self.model_ft.layer3(x)
+        x = self.model_ft.layer4(x)
+
+        uplayer, avg_layer = list(self.model_ft.avgpool.children())
+        conv_feat = uplayer(x)
+        x = avg_layer(conv_feat)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-        return x, conv_feat
-    
-    def _resnetup_conv_feat(self):
-        upsample = self.model_ft.avgpool.children()[0]
-        return (nn.Sequential(
-            self.model_ft.conv1,
-            self.model_ft.bn1,
-            self.model_ft.relu,
-            self.model_ft.maxpool,
-            self.model_ft.layer1,
-            self.model_ft.layer2,
-            self.model_ft.layer3,
-            self.model_ft.layer4,
-            upsample,
-        ),)
+        return x.data.numpy(), conv_feat.data.numpy()
+
 
     def init_atten(self, model_path, arch, test_transform=None, batch_sz=1, cuda_id=-1):
         self.cuda_id = cuda_id
@@ -88,23 +80,11 @@ class ResNetVisulize():
         else:
             self.model_ft = torch.load(model_path, map_location=lambda storage, loc: storage)
             self.model_ft.cpu()
-        self.W = self.model_ft.fc.weight.data
-
-        if 'vgg' in arch:
-            self.extractor = self._vgg_feat_extractor()
-        elif 'inception' in arch:
-            self.extractor = self._inception_feat_extractor()
-        else:
-            self.extractor = self._resnet_feat_extractor()
+        self.arch = arch
+        self.W = self.model_ft.fc.weight.data.numpy()
     
-    def _extract_feature(self, x):
-        for nn_model in self.extractor:
-            x = nn_model(x)
-            x = x.view(x.size(0), -1) 
-        return x.data.numpy()
-
     
-    def extract(self, img_lst):
+    def compute_attention(self, img_lst):
         '''
         img_lst is a list of images
         '''
@@ -116,7 +96,8 @@ class ResNetVisulize():
         for i in range(len(img_lst)):
             X[i] = self.test_transform(img_lst[i])
         
-        proba = None
+        proba_all = None
+        conv_feat_all = None
         num_batches = int(np.ceil(1.0*N/self.batch_sz))
         for b in range(num_batches):
             start = b*self.batch_sz
@@ -125,6 +106,16 @@ class ResNetVisulize():
                 B = Variable(X[start:start+this_size,...]).cuda(self.cuda_id)
             else:
                 B = Variable(X[start:start+this_size,...])
-            feat_this = self._extract_feature(B)
-            Feat = feat_this if Feat is None else np.concatenate((Feat, feat_this), axis=0)
-        return Feat
+            if 'up' in self.arch:
+                proba_this, conv_feat_this = self.resnetup_forward(B)
+            else:
+                proba_this, conv_feat_this = self.resnet_forward(B)
+            proba_all = proba_this if proba_all is None else np.concatenate((proba_all, proba_this), axis=0)
+            conv_feat_all = conv_feat_this if conv_feat_all is None else np.concatenate((conv_feat_all, conv_feat_this), axis=0)
+        atten_lst = []
+        for i in range(N):
+            pred = np.argmax(proba_all[i])
+            atten_map = conv_feat_all[i] * self.W[pred]
+            atten_map = np.sum(atten_map, axis=0)
+            atten_map[atten_map < .0] = .0
+        return atten_lst, proba_all

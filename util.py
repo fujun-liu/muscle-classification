@@ -27,20 +27,21 @@ def load_old_patient_info(feat_path):
                                 'slides':[slide_name_all[i]], 'feat':deep_feat[i]} 
     return patient_info
 
-def get_tile_rois(fg, tile_size=512, fg_ratio=0.5):
+def get_tile_rois(fg, tile_size=512, overlap_sz=256, fg_ratio=0.5):
     '''
     get tiles. Remove those majority on background
     '''
     H, W = fg.shape
-    nH, nW = int(np.ceil(1.0*H/tile_size)), int(np.ceil(1.0*W/tile_size))
+    grid_sz = tile_size - overlap_sz
+    nH, nW = int(np.ceil(1.0*H/grid_sz)), int(np.ceil(1.0*W/grid_sz))
     yx_coord = []
     R = tile_size // 2
     for i in range(nH):
-        top = i * tile_size
+        top = i * grid_sz
         bottom = top+tile_size if i != nH-1 else H
         gy = int(0.5*(top+bottom))
         for j in range(nW):
-            left = j*tile_size
+            left = j*grid_sz
             right = left+tile_size if j != nW-1 else W
             gx = int(0.5*(left+right))
             area = 1.0*(bottom - top)*(right - left)

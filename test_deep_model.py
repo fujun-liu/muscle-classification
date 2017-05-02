@@ -4,7 +4,7 @@ crop rois
 from torchvision import transforms
 import glob, os, pickle
 from class_label_parser import LabelParser
-from util import get_dense_nuclei_rois
+from util import get_dense_nuclei_rois, get_tile_rois
 from MuscleModelPredict import MuscleModelPredict, data_transforms
 from MuscleModelFeature import MuscleFeatExtractor
 import cv2
@@ -14,19 +14,32 @@ from scipy.io import savemat
 
 arch = 'resnet'
 batch_sz = 10
-num_rois = 100
+
 crop_size = 512
 train_size = 256
 R = crop_size // 2
 #model_dir = 'torch-model'
 model_dir = 'torch-model'
 result_dir = 'deep-feat'
-result_name = 'deep-feat-{}-{}'.format(arch, num_rois)
+use_tile = False
+use_em = True
+em_topk = 10
+# number of rois used for training
+train_num_rois = 30
+# number of rois used for testing
+test_num_rois = 30
+if not use_tile:
+    if use_em: result_name = 'deep-feat-{}-{}-{}-em-ss'.format(arch, test_num_rois, em_topk)
+    else: result_name = 'deep-feat-{}-train{}-test{}'.format(arch, train_num_rois, test_num_rois)
+else:
+    if use_em:  result_name = 'deep-feat-{}-tile-em{}'.format(arch, em_topk)
+    else: result_name = 'deep-feat-{}-tile'.format(arch)
 # load cached roi centers
 #roi_center_path = None
-roi_center_path = 'slide-feat/roi_centers_{}.p'.format(num_rois)
+roi_center_path = 'slide-feat/roi_centers_{}.p'.format(test_num_rois)
 if roi_center_path is not None and not os.path.exists(roi_center_path):
     roi_center_path = None
+if use_tile: roi_center_path = None
 
 nuclei_dir = '/media/fujunl/FujunLiu/muscle-classification/muscle-whole-slide-results/nuclei-det'
 nuclei_suffix = '_nuclei_seg.png'
@@ -72,13 +85,19 @@ patient_info = {}
 
 for gid in range(num_folds):
     print 'Testing set {}'.format(gid)
-    model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, num_rois)
+    if not use_tile:
+        if not use_em: model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, train_num_rois)
+        else: model_name = 'pretrain_{}classes_cv{}{}_{}_60_30_10_em_ss'.format(num_folds, num_folds, gid, arch)
+    else:
+        if use_em: model_name = 'pretrain_{}classes_cv{}{}_{}_60_tiles_em{}'.format(num_folds, num_folds, gid, arch, em_topk)
+        else: model_name = 'pretrain_{}classes_cv{}{}_{}_20_tiles'.format(num_folds, num_folds, gid, arch)
     #model_name = 'pretrain_3classes_cv3{}_resnetup8_60_10_test'.format(gid)
     model_path = os.path.join(model_dir, model_name + '.th')
-    if not os.path.exists(model_path):
-        tmp_num_rois = 10
-        model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, tmp_num_rois)
-        model_path = os.path.join(model_dir, model_name + '.th')
+    print model_path
+    #if not os.path.exists(model_path):
+    #    tmp_num_rois = 10
+    #    model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, tmp_num_rois)
+    #    model_path = os.path.join(model_dir, model_name + '.th')
     muscle_model = MuscleModelPredict()
     feat_extractor = MuscleFeatExtractor()
     muscle_model.init_test(model_path, test_transform=test_transform, batch_sz=batch_sz)
@@ -112,7 +131,10 @@ for gid in range(num_folds):
             if len(fg.shape) == 3:
                 fg = fg[:,:,0]
             fg = fg > 0
-            roi_centers, weight = get_dense_nuclei_rois(nuclei_map, fg, num_rois, crop_size=crop_size)
+            if not use_tile:
+                roi_centers, weight = get_dense_nuclei_rois(nuclei_map, fg, test_num_rois, crop_size=crop_size)
+            else:
+                roi_centers = get_tile_rois(fg, tile_size=crop_size)
         img_lst = []
         for ri in range(roi_centers.shape[0]):
             y, x = roi_centers[ri]

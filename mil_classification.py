@@ -100,7 +100,15 @@ def cv_mil(patient_info, pca_dim=64, num_folds=3,):
 
 if __name__ == "__main__":
     feat_dir = 'deep-feat'
-    feat_name = 'deep-feat-resnet-20'
+    #feat_name = 'deep-feat-resnet-30'
+    #feat_name = 'deep-feat-resnet-train30-test10'
+    #feat_name = 'deep-feat-resnet-train10-test30'
+    #feat_name = 'deep-feat-resnet-tile-em'
+    #feat_name = 'deep-feat-resnet-tile'
+    #feat_name = 'deep-feat-resnet-30-10-em'
+    feat_name = 'deep-feat-resnet-30-10-em-ss'
+    #feat_name = 'deep-feat-resnet-10-10-em'
+    #feat_name = 'deep-feat-resnet-10-10-em-ss'
     feat_path = os.path.join(feat_dir, feat_name + '.p')
     print feat_path
     #patient_info = load_old_patient_info(feat_path)
