@@ -11,14 +11,12 @@ import cv2
 import numpy as np
 from PIL import Image
 from scipy.io import savemat
+from ResNetVisulize import ResNetVisulize
+from skimage.transform import pyramid_expand
 
 arch = 'resnet'
-use_l1 = False
-use_enhance = False
-use_last = False
-use_cv_datasets = False
-use_tile = True
-use_em = True
+use_l1 = True
+atten_type = 'cam'
 batch_sz = 10
 
 crop_size = 512
@@ -26,31 +24,19 @@ train_size = 256
 R = crop_size // 2
 #model_dir = 'torch-model'
 model_dir = 'torch-model'
-result_dir = 'deep-feat'
+result_dir = 'atten-dir'
 
-save_result = True
-em_topk = 30
 # number of rois used for training
-train_num_rois = 30
+train_num_rois = 10
 # number of rois used for testing
-test_num_rois = 30
-if not use_tile:
-    if use_em: result_name = 'deep-feat-{}-{}-{}-em-ss'.format(arch, test_num_rois, em_topk)
-    else: 
-        result_name = 'deep-feat-{}-train{}-test{}'.format(arch, train_num_rois, test_num_rois)
-        if use_l1: result_name += '-l1'
-        if use_enhance: result_name += '-enhance'
-        if use_last: result_name += '-last'
-        if use_cv_datasets: result_name += '-cv-datasets'
-else:
-    if use_em:  result_name = 'deep-feat-{}-tile-200-em{}'.format(arch, em_topk)
-    else: result_name = 'deep-feat-{}-tile'.format(arch)
+test_num_rois = 10
+
 # load cached roi centers
 #roi_center_path = None
 roi_center_path = 'slide-feat/roi_centers_{}.p'.format(test_num_rois)
 if roi_center_path is not None and not os.path.exists(roi_center_path):
     roi_center_path = None
-if use_tile: roi_center_path = None
+
 
 nuclei_dir = '/media/fujunl/FujunLiu/muscle-classification/muscle-whole-slide-results/nuclei-det'
 nuclei_suffix = '_nuclei_seg.png'
@@ -58,12 +44,7 @@ fg_dir = '/media/fujunl/FujunLiu/muscle-classification/muscle-whole-slide-result
 fg_suffix = '_fg_noholes.png'
 
 wsi_dir = '/media/fujunl/FujunLiu/muscle-classification/wholeslide/clean'
-if use_cv_datasets:
-    cv_split_info_file = 'cv2_split_info.p'
-    num_classes = 2
-else:
-    cv_split_info_file = 'cv3_split_info.p'
-    num_classes = 3
+cv_split_info_file = 'cv3_split_info.p'
 
 # load wsi 
 wsi_suffix = ('.ndpi', '.tiff', '.svs')
@@ -77,6 +58,7 @@ for suffix in wsi_suffix:
 with open(cv_split_info_file, 'rb') as f:
     cv_split_info = pickle.load(f)
 label_parser = LabelParser()
+
 if 'inception' in arch:
     train_size = 320
     test_transform = transforms.Compose([
@@ -101,28 +83,15 @@ patient_info = {}
 
 for gid in range(num_folds):
     print 'Testing set {}'.format(gid)
-    if not use_tile:
-        if not use_em: 
-            model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, train_num_rois)
-            if use_l1: model_name += '_l1_only'
-            if use_enhance: model_name += '_enhance'
-            if use_last: model_name += '_ftlast'
-            if use_cv_datasets: model_name += '_cv_datasets'
-        else: model_name = 'pretrain_{}classes_cv{}{}_{}_60_30_10_em_ss'.format(num_folds, num_folds, gid, arch)
-    else:
-        if use_em: model_name = 'pretrain_{}classes_cv{}{}_{}_200_em_tile{}'.format(num_folds, num_folds, gid, arch, em_topk)
-        else: model_name = 'pretrain_{}classes_cv{}{}_{}_20_tiles'.format(num_folds, num_folds, gid, arch)
+    model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, train_num_rois)
+    if use_l1:
+        model_name += '_l1'
     #model_name = 'pretrain_3classes_cv3{}_resnetup8_60_10_test'.format(gid)
     model_path = os.path.join(model_dir, model_name + '.th')
     print model_path
-    #if not os.path.exists(model_path):
-    #    tmp_num_rois = 10
-    #    model_name = 'pretrain_{}classes_cv{}{}_{}_60_{}'.format(num_folds, num_folds, gid, arch, tmp_num_rois)
-    #    model_path = os.path.join(model_dir, model_name + '.th')
-    muscle_model = MuscleModelPredict(num_classes=num_classes)
-    feat_extractor = MuscleFeatExtractor(num_classes=num_classes)
-    muscle_model.init_test(model_path, test_transform=test_transform, batch_sz=batch_sz)
-    feat_extractor.init_extract(model_path, arch, test_transform=test_transform, batch_sz=batch_sz)
+
+    muscle_model = ResNetVisulize()
+    muscle_model.init_atten(model_path, arch, atten_type=atten_type, test_transform=test_transform, batch_sz=batch_sz)
     # load deep learning model
     slide_lst = []
     for slide_name in wsi_name_lst:
@@ -134,7 +103,6 @@ for gid in range(num_folds):
     roi_cnt = .0
     for slide_name in slide_lst:
         label, pid = label_parser(slide_name)
-        if use_cv_datasets: label = 1 if label == 0 else 0
         # read nuclei map
         img_path = os.path.join(nuclei_dir, slide_name + '.png')
         img = cv2.imread(img_path)
@@ -167,17 +135,29 @@ for gid in range(num_folds):
             roi = img[top:bottom, left:right]
             #img_lst.append(Image.fromarray(roi))
             img_lst.append(Image.fromarray(cv2.resize(roi, (train_size, train_size))))
-        proba = muscle_model.pred_proba(img_lst)
-        deep_feat = feat_extractor.extract(img_lst)
-        print deep_feat.shape
+        crop_lst, atten_lst, proba, act_max_val = muscle_model.compute_attention(img_lst)
+        #slide_dir = os.path.join(result_dir, slide_name)
+        #print slide_dir
+        #print len(crop_lst)
+        #if not os.path.isdir(slide_dir):
+        #    os.makedirs(slide_dir)
+        upscale = 1.0*crop_lst[0].shape[0]/atten_lst[0].shape[0]
+        for ri in range(len(crop_lst)):
+            pred = np.argmax(proba[ri])
+            crop_path = '{}/{}-{}.png'.format(result_dir, slide_name, ri)
+            atten_path = '{}/{}-{}-{}-T{}P{}-atten-{}'.format(result_dir, slide_name, ri, arch, label, pred, atten_type)
+            if use_l1: atten_path += '-l1'
+            cv2.imwrite(crop_path, crop_lst[ri])
+            atten = atten_lst[ri]/act_max_val
+            cv2.imwrite(atten_path + '.png', 255*pyramid_expand(atten, upscale=upscale))
+            
         if pid in patient_info.keys():
             assert patient_info[pid]['gid'] == gid
             assert patient_info[pid]['label'] == label
             patient_info[pid]['slides'].append(slide_name)
             patient_info[pid]['proba'] = np.concatenate((patient_info[pid]['proba'], proba), axis=0)
-            patient_info[pid]['feat'] = np.concatenate((patient_info[pid]['feat'], deep_feat), axis=0)
         else:
-            patient_info[pid] = {'proba':proba, 'gid':gid, 'label':label, 'slides':[slide_name], 'feat':deep_feat}
+            patient_info[pid] = {'proba':proba, 'gid':gid, 'label':label, 'slides':[slide_name]}
         pred_slide = np.argmax(np.mean(proba, axis=0))
         pred_roi = np.argmax(proba, axis=1)
         voting_acc += pred_slide == label
@@ -194,7 +174,7 @@ print 'avg roi acc: {}'.format(avg_roi_acc/num_folds)
 print 'avg voting acc: {}'.format(avg_voting_acc/num_folds)
 # test patient classification acc
 patien_acc = .0
-conf_mat = np.zeros((num_classes,num_classes))
+conf_mat = np.zeros((3,3))
 for pid, pid_proba in patient_info.iteritems():
     proba = pid_proba['proba']
     label = pid_proba['label']
@@ -203,12 +183,3 @@ for pid, pid_proba in patient_info.iteritems():
     conf_mat[label, pred] += 1.0
 print 'Patient acc: {}'.format(patien_acc/len(patient_info))
 print conf_mat
-
-if save_result:
-    # save to pickle
-    result_path = os.path.join(result_dir, result_name + '.p')
-    with open(result_path, 'wb') as f:
-        pickle.dump(patient_info, f)
-    # save to mat
-    mat_path = os.path.join(result_dir, 'mat', result_name + '.mat')
-    savemat(mat_path, mdict=patient_info)

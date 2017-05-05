@@ -58,6 +58,7 @@ def cv_region_classification(patient_info, num_folds=3):
 if __name__ == "__main__":
     feat_dir = 'deep-feat'
     feat_name = 'deep-feat-resnet-10'
+    #feat_name = 'deep-feat-resnetfine4-train10-test10'
     feat_path = os.path.join(feat_dir, feat_name + '.p')
     print feat_path
     #patient_info = load_old_patient_info(feat_path)

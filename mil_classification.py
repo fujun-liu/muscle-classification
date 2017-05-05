@@ -60,17 +60,22 @@ def cv_mil(patient_info, pca_dim=64, num_folds=3,):
         Y_train, Y_test = [], []
         deep_acc = .0
         for pid in patient_info.keys():
+            proba_feat = patient_info[pid]['proba']
             if patient_info[pid]['gid'] == gid:
                 deep_acc += patient_info[pid]['label'] == np.argmax(np.mean(patient_info[pid]['proba'], axis=0))
                 # test data
                 X_test_lst.append(patient_info[pid]['feat'])
-                proba_test_lst.append(np.mean(patient_info[pid]['proba'], axis=0)[np.newaxis,:])
+                #proba_test_lst.append(np.mean(patient_info[pid]['proba'], axis=0)[np.newaxis,:])
+                proba_test_lst.append(proba_feat)
                 Y_test.append(patient_info[pid]['label'])
             else:
                 # train data
                 X_train_lst.append(patient_info[pid]['feat'])
-                proba_train_lst.append(np.mean(patient_info[pid]['proba'], axis=0)[np.newaxis,:])
+                #proba_train_lst.append(np.mean(patient_info[pid]['proba'], axis=0)[np.newaxis,:])
+                proba_train_lst.append(proba_feat)
                 Y_train.append(patient_info[pid]['label'])
+        X_train_lst = proba_train_lst
+        X_test_lst = proba_test_lst
         num_train, num_test = len(X_train_lst), len(X_test_lst)
         print num_train, num_test
         Y_train = np.asarray(Y_train)
@@ -100,13 +105,14 @@ def cv_mil(patient_info, pca_dim=64, num_folds=3,):
 
 if __name__ == "__main__":
     feat_dir = 'deep-feat'
-    #feat_name = 'deep-feat-resnet-30'
+    feat_name = 'deep-feat-resnet-30'
+    #feat_name = 'deep-feat-resnet-train10-test10-last'
     #feat_name = 'deep-feat-resnet-train30-test10'
     #feat_name = 'deep-feat-resnet-train10-test30'
     #feat_name = 'deep-feat-resnet-tile-em'
     #feat_name = 'deep-feat-resnet-tile'
     #feat_name = 'deep-feat-resnet-30-10-em'
-    feat_name = 'deep-feat-resnet-30-10-em-ss'
+    #feat_name = 'deep-feat-resnet-30-10-em-ss'
     #feat_name = 'deep-feat-resnet-10-10-em'
     #feat_name = 'deep-feat-resnet-10-10-em-ss'
     feat_path = os.path.join(feat_dir, feat_name + '.p')
@@ -114,7 +120,7 @@ if __name__ == "__main__":
     #patient_info = load_old_patient_info(feat_path)
     with open(feat_path, 'rb') as f:
         patient_info = pickle.load(f)
-    #pca_dim = -1
-    pca_dim = 32
+    pca_dim = -1
+    #pca_dim = 32
     cv_mil(patient_info, pca_dim=pca_dim)
 

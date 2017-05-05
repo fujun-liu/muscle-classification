@@ -1,4 +1,5 @@
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
@@ -79,7 +80,7 @@ def train_model_with_grid_search(X_train, y_train, model_strs, X_test=None, y_te
     if 'logit' in model_strs:
         print '---------- grid search for logistic regression -------'
         est = LogisticRegression(n_jobs=-1)
-        tuned_parameters = [{'penalty':['l2', 'l1'], 'C':[0.001, 0.01, 0.1, 1, 10]}]
+        tuned_parameters = [{'penalty':['l1', 'l2'], 'C':[0.001, 0.01, 0.1, 1, 10]}]
         test_acc, model = gridsearch_model(est, tuned_parameters, X_train, y_train, X_test, y_test)
 
     if 'svm' in model_strs:
@@ -88,6 +89,13 @@ def train_model_with_grid_search(X_train, y_train, model_strs, X_test=None, y_te
         tuned_parameters = [{'kernel': ['linear', 'rbf'], 'C': [0.001, 0.01, 0.1, 1, 10]}]
         test_acc, model = gridsearch_model(est, tuned_parameters, X_train, y_train, X_test, y_test)
     
+    if 'rf' in model_strs:
+        print '-------- grid search for rf --------'
+        est = RandomForestClassifier()
+        tuned_parameters = [{'n_estimators': [30,60,100], }]
+        test_acc, model = gridsearch_model(est, tuned_parameters, X_train, y_train, X_test, y_test)
+    
+
     if 'nn' in model_strs:
         print '------- grid search for nearest neighbor classifier -------'
         est = KNeighborsClassifier(n_jobs=-1)
