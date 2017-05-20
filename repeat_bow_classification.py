@@ -22,8 +22,9 @@ num_clusters = 16
 use_proba_feat = False
 # only used for tile based algortithm
 topk_sel = -1
+kmeans_repeat = 20
+output_score = True
 save_result = True
-
 def cv_bow(patient_info, pca_dim, num_clusters, num_folds=3):
     '''
     format
@@ -36,8 +37,8 @@ def cv_bow(patient_info, pca_dim, num_clusters, num_folds=3):
     conf_bow = np.zeros((3,3))
     conf_voting = np.zeros((3,3))
     agg_pred, agg_label = None, None
-    bow_feat = None
     agg_pid = []
+    agg_bow_score = None
     for gid in range(num_folds):
         proba_train_lst, proba_test_lst = [], []
         X_train_lst, X_test_lst = [], []
@@ -115,12 +116,12 @@ def cv_bow(patient_info, pca_dim, num_clusters, num_folds=3):
                 feat_local = pca_model.transform(feat_local)
             code_test[i] = bow_encoding(centers, feat_local)
         
-        bow_feat = code_test if bow_feat is None else np.concatenate((bow_feat, code_test), axis=0)
         model, bow_acc = train_model_with_grid_search(code_train, Y_train, ('rf',), X_test=code_test, y_test=Y_test)
         bow_proba = model['pred_model'].predict_proba(model['norm_model'].transform(code_test))
         bow_pred = np.argmax(bow_proba, axis=1)
         agg_label = Y_test if agg_label is None else np.concatenate((agg_label, Y_test))
         agg_pred = bow_pred if agg_pred is None else np.concatenate((agg_pred, bow_pred))
+        agg_bow_score = bow_proba if agg_bow_score is None else np.concatenate((agg_bow_score, bow_proba), axis=0)
         for i in range(num_test): conf_bow[Y_test[i], bow_pred[i]] += 1.0
         #ensemble_pred = np.argmax(prob_test+bow_proba, axis=1)
         #ensemble_acc = 1.0*np.sum(ensemble_pred == Y_test)/num_test
@@ -136,10 +137,20 @@ def cv_bow(patient_info, pca_dim, num_clusters, num_folds=3):
     print 'Avg voting acc {}'.format(avg_voting_acc/num_folds)
     print conf_voting
     avg_voting_acc /= num_folds 
-    bow_acc = np.sum(agg_label == agg_pred)/agg_label.size
+    bow_acc = avg_bow_acc/num_folds
     #print 'Avg ensemble acc {}'.format(avg_ensemble_acc/num_folds)
-    return agg_label, agg_pred, agg_pid, avg_voting_acc, bow_feat
+    return bow_acc, avg_voting_acc, agg_label, agg_pred, agg_pid, agg_bow_score
 
+def cv_bow_repeat(patient_info, pca_dim, num_clusters, kmeans_repeat, num_folds=3):
+    bow_acc_all = np.zeros(kmeans_repeat)
+    agg_pred_all = []
+    agg_bow_score_all = []
+    for i in range(kmeans_repeat):
+        bow_acc, voting_acc, agg_label, agg_pred, agg_pid, agg_bow_score = cv_bow(patient_info, pca_dim, num_clusters)
+        agg_pred_all.append(agg_pred)
+        bow_acc_all[i] = bow_acc
+        agg_bow_score_all.append(agg_bow_score)
+    return voting_acc, bow_acc_all, agg_pred_all, agg_label, agg_pid, agg_bow_score_all
 
 if __name__ == "__main__":
     from scipy.io import savemat
@@ -160,32 +171,41 @@ if __name__ == "__main__":
     #feat_name = 'deep-feat-inception-train30-test30'
     
     # last
-    #feat_name = 'deep-feat-resnet-train10-test10-last'
+    #feat_name = 'deep-feat-resnet-train30-test30-last'
+    #feat_name = 'deep-feat-vgg-train30-test30-last'
+    #feat_name = 'deep-feat-inception-train30-test30-last'
     # from scratch
-    
+    #feat_name = 'deep-feat-resnet-train30-test30-raw'
+    #feat_name = 'deep-feat-vgg-train30-test30-raw'
+    #feat_name = 'deep-feat-inception-train30-test30-raw'
+
     # from tiles
+    # wsi method I
     #feat_name = 'deep-feat-resnet-tile'
+    # wsi method II
     #feat_name = 'deep-feat-resnet-tile-200-em30'
+
+    #feat_name = 'deep-feat-resnet-30-em-is'
+    #feat_name = 'deep-feat-resnet-30-10-em-ss'
+
     feat_path = os.path.join(feat_dir, feat_name + '.p')
+
     print feat_path
     #patient_info = load_old_patient_info(feat_path)
     with open(feat_path, 'rb') as f:
         patient_info = pickle.load(f)
-    agg_label, agg_pred, agg_pid, voting_acc, bow_feat = cv_bow(patient_info, pca_dim, num_clusters)
-    
+    voting_acc, bow_acc_all, agg_pred_all, agg_label, agg_pid, agg_bow_score = cv_bow_repeat(patient_info, pca_dim, num_clusters, kmeans_repeat)
+    print voting_acc, np.median(bow_acc_all), np.amax(bow_acc_all)
     if save_result:
-        if use_proba_feat: tmp_name = feat_name + '_feat_prob_{}'.format(num_clusters)
-        else: tmp_name = feat_name + '_feat_{}'.format(num_clusters)
+        if use_proba_feat: tmp_name = feat_name + '_repeat{}_feat_prob_{}'.format(kmeans_repeat, num_clusters)
+        else: tmp_name = feat_name + '_repeat{}_feat_avg_{}'.format(kmeans_repeat, num_clusters)
         if topk_sel > 0: tmp_name += '_top{}'.format(topk_sel)
+        if output_score: tmp_name += '_score'
         mat_path = os.path.join('results', 'mat', tmp_name + '_conf.mat')
         p_path = os.path.join('results', tmp_name + '_conf.p')
-        result = {'label':agg_label, 'pred':agg_pred, 'pid':agg_pid, 'voting_acc':voting_acc}
+        result = {'label':agg_label, 'pred_all':agg_pred_all, 'pid':agg_pid, 
+                    'bow_acc_all': bow_acc_all, 'voting_acc':voting_acc, 'agg_bow_score':agg_bow_score}
         savemat(mat_path, result)
         with open(p_path, 'wb') as f:
             pickle.dump(result, f)
-        
-        bow_feat_path = os.path.join('results', feat_name + '_bow_feat.p')
-        print bow_feat
-        with open(bow_feat_path, 'wb') as f:
-            pickle.dump(bow_feat, f)
 

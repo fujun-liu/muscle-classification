@@ -116,7 +116,7 @@ class ResNetVisulize():
         N = len(img_lst)
         for i in range(N):
             pred = np.argmax(proba_all[i])
-            atten_map = conv_feat_all[i] * self.W[pred][:,np.newaxis,np.newaxis]
+            atten_map = conv_feat_all[i] * self.W[slide_pred][:,np.newaxis,np.newaxis]
             atten_map = np.sum(atten_map, axis=0)
             atten_map[atten_map < .0] = .0
             max_val = max(max_val, np.amax(atten_map))
