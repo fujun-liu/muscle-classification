@@ -24,7 +24,7 @@ use_proba_feat = False
 topk_sel = -1
 kmeans_repeat = 20
 output_score = True
-save_result = True
+save_result = False
 def cv_bow(patient_info, pca_dim, num_clusters, num_folds=3):
     '''
     format

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import time
 import copy
 import os
-from cv_classification_dataset import CVImageFolder, CVImageFolderFromList, ImageFolderFromList
+from cv_classification_dataset import CVImageFolder, CVImageFolderFromList
 import torch.nn.functional as F
 from image_sampler import ImageSampler
 from PIL import Image
